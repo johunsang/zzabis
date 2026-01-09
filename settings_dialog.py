@@ -5,13 +5,14 @@ ZZABIS 설정 다이얼로그 - 장치 설정
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QFrame, QWidget, QComboBox, QMessageBox,
-    QApplication, QScrollArea
+    QApplication, QScrollArea, QLineEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QKeyEvent
 from config import (
     get_microphone, set_microphone, get_screen, set_screen,
-    get_hotkey, set_hotkey, get_style_mode, set_style_mode, STYLE_MODES
+    get_hotkey, set_hotkey, get_style_mode, set_style_mode, STYLE_MODES,
+    get_openai_api_key, set_openai_api_key
 )
 import sounddevice as sd
 
@@ -27,8 +28,8 @@ class SettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("ZZABIS 설정")
-        self.setMinimumSize(420, 480)
-        self.setMaximumSize(500, 600)
+        self.setMinimumSize(420, 580)
+        self.setMaximumSize(500, 700)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
 
         self.is_capturing = False
@@ -174,6 +175,58 @@ class SettingsDialog(QDialog):
         style_section.addWidget(style_hint)
         layout.addLayout(style_section)
 
+        # === API 키 설정 ===
+        api_section = self._create_section("OpenAI API 키")
+
+        # 현재 키 상태 표시
+        current_key = get_openai_api_key()
+        if current_key:
+            key_status = f"sk-...{current_key[-4:]}"
+        else:
+            key_status = "설정 안됨"
+
+        self.api_key_label = QLabel(f"현재: {key_status}")
+        self.api_key_label.setStyleSheet("color: #888; font-size: 12px;")
+        api_section.addWidget(self.api_key_label)
+
+        # API 키 입력 필드
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setPlaceholderText("sk-...")
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_input.setStyleSheet("""
+            QLineEdit {
+                padding: 10px 12px;
+                font-size: 13px;
+                background: #252540;
+                border: 1px solid #404060;
+                border-radius: 6px;
+                color: white;
+            }
+            QLineEdit:focus {
+                border-color: #00c8a0;
+            }
+        """)
+        api_section.addWidget(self.api_key_input)
+
+        # 저장 버튼
+        api_save_btn = QPushButton("API 키 저장")
+        api_save_btn.setStyleSheet("""
+            QPushButton {
+                background: #d04040;
+                color: white;
+            }
+            QPushButton:hover {
+                background: #e05050;
+            }
+        """)
+        api_save_btn.clicked.connect(self._save_api_key)
+        api_section.addWidget(api_save_btn)
+
+        api_hint = QLabel("platform.openai.com/api-keys 에서 발급")
+        api_hint.setStyleSheet("color: #666; font-size: 11px;")
+        api_section.addWidget(api_hint)
+        layout.addLayout(api_section)
+
         # 스페이서
         layout.addStretch()
 
@@ -252,6 +305,26 @@ class SettingsDialog(QDialog):
     def _on_style_changed(self, index):
         style = self.style_combo.currentData()
         set_style_mode(style)
+
+    def _save_api_key(self):
+        """API 키 저장"""
+        new_key = self.api_key_input.text().strip()
+        if not new_key:
+            QMessageBox.warning(self, "오류", "API 키를 입력하세요.")
+            return
+
+        if not new_key.startswith("sk-"):
+            QMessageBox.warning(self, "오류", "올바른 OpenAI API 키를 입력하세요.\n(sk-로 시작해야 합니다)")
+            return
+
+        if len(new_key) < 20:
+            QMessageBox.warning(self, "오류", "API 키가 너무 짧습니다.")
+            return
+
+        set_openai_api_key(new_key)
+        self.api_key_label.setText(f"현재: sk-...{new_key[-4:]}")
+        self.api_key_input.clear()
+        QMessageBox.information(self, "완료", "API 키가 저장되었습니다.\n앱을 재시작하면 적용됩니다.")
 
     def _get_hotkey_display_name(self) -> str:
         """현재 핫키 표시"""
